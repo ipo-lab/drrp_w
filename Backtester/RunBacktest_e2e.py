@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 import cvxpy as cp
-from util import LoadData, generate_date_list, start, end, factors_list, BatchUtils
+from util import LoadData, generate_date_list, start, end, factors_list, BatchUtils, nearestPD
 from Optimizers import Optimizers, GetOptimalAllocation, drrpw_net
 from FactorModelling import GetParameterEstimates
 import PortfolioClasses as pc
@@ -19,6 +19,16 @@ batch_utils = BatchUtils()
 
 def RunBacktest_e2e(path_to_data, opt_type, InitialValue=1000000, lookback = 30, datatype='broad'):
     returns, assets_list_cleaned, prices, factors = LoadData(path_to_data, e2e=True, datatype=datatype)
+    
+    nan_columns = prices.columns[prices.isna().any()].tolist()
+    prices.drop(nan_columns, axis=1, inplace=True)
+    returns.drop(nan_columns, axis=1, inplace=True)
+
+    assets_list_cleaned = [x for x in assets_list_cleaned if not x in nan_columns]
+
+    returns = returns.dropna(axis=1)
+    prices = prices.dropna(axis=1)
+
     holdings = pd.DataFrame(columns=['date']+assets_list_cleaned)
     portVal = pd.DataFrame(columns=['date', 'Wealth'])
 
@@ -92,26 +102,28 @@ def RunBacktest_e2e(path_to_data, opt_type, InitialValue=1000000, lookback = 30,
 
         factor_returns = factors[(factors['date'] < date)].tail(lookback)
         factor_returns = factor_returns.drop('date', axis=1)
+        try:
+            performance_tensor = None
+            if batching:
+                window_size = 52
+                batched_tensor = batch_utils.convert_to_sw_batched(asset_returns, window_size)
+                performance_tensor = batch_utils.convert_performance_periods(asset_returns, window_size)
+                train_set = (batched_tensor, performance_tensor)
+            else:
+                train_set = DataLoader(pc.SlidingWindow(factor_returns, asset_returns, n_obs, 
+                                                    perf_period))
 
-        performance_tensor = None
-        if batching:
-            window_size = 52
-            batched_tensor = batch_utils.convert_to_sw_batched(asset_returns, window_size)
-            performance_tensor = batch_utils.convert_performance_periods(asset_returns, window_size)
-            train_set = (batched_tensor, performance_tensor)
-        else:
-            train_set = DataLoader(pc.SlidingWindow(factor_returns, asset_returns, n_obs, 
-                                                perf_period))
+            # net_train to get optimal delta
+            net.net_train(train_set, lr=lr, epochs=epochs_per_date, date=date, batching=batching)
 
-        # net_train to get optimal delta
-        net.net_train(train_set, lr=lr, epochs=epochs_per_date, date=date, batching=batching)
+            factor_ret_tensor = Variable(torch.tensor(factor_returns.values, dtype=torch.double))
+            asset_ret_tensor = Variable(torch.tensor(asset_returns.values, dtype=torch.double))
 
-        factor_ret_tensor = Variable(torch.tensor(factor_returns.values, dtype=torch.double))
-        asset_ret_tensor = Variable(torch.tensor(asset_returns.values, dtype=torch.double))
-
-        # perform forward pass to get optimal portfolio
-        x_tensor, _ = net(performance_tensor, asset_ret_tensor, batching=False)
-        x = x_tensor.detach().numpy().flatten()
+            # perform forward pass to get optimal portfolio
+            x_tensor, _ = net(performance_tensor, asset_ret_tensor, batching=False)
+            x = x_tensor.detach().numpy().flatten()
+        except:
+            pass
         if opt_type in [Optimizers.DRRPWDeltaTrained, Optimizers.DRRPWDeltaTrainedCustom]:
             delta_val = net.delta.item()
             delta_trained.append(delta_val)

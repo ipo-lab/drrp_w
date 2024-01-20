@@ -88,69 +88,69 @@ import numpy as np
 import numpy as np
 from scipy.stats import chisquare
 from scipy.stats import gmean
-import cvxopt as opt
-from cvxopt import matrix, spmatrix, sparse
-from cvxopt.solvers import qp, options
-from cvxopt import blas
-import pandas as pd
-options['show_progress'] = False
-options['feastol'] = 1e-9
+# import cvxopt as opt
+# from cvxopt import matrix, spmatrix, sparse
+# from cvxopt.solvers import qp, options
+# from cvxopt import blas
+# import pandas as pd
+# options['show_progress'] = False
+# options['feastol'] = 1e-9
 
-def RobMVO(mu,Q,x0):
-    # Penalty on Turnover (very sensitive)
-    c = 0
-    # Penalty on variance
-    lambd = 0.05
-    # Pentalty on returns
-    rpen = 1
-    # Max weight of an asset
-    max_weight = 1
-    # between 0% and 200%
-    turnover = 2
-    #size of uncertainty set
-    ep = 2
+# def RobMVO(mu,Q,x0):
+#     # Penalty on Turnover (very sensitive)
+#     c = 0
+#     # Penalty on variance
+#     lambd = 0.05
+#     # Pentalty on returns
+#     rpen = 1
+#     # Max weight of an asset
+#     max_weight = 1
+#     # between 0% and 200%
+#     turnover = 2
+#     #size of uncertainty set
+#     ep = 2
 
-    T = np.shape(mu)[0]
-    Theta = np.diag(np.diag(Q))/T
-    sqrtTh = np.diag(matrix(np.sqrt(Theta)))
-    n = len(Q)
+#     T = np.shape(mu)[0]
+#     Theta = np.diag(np.diag(Q))/T
+#     sqrtTh = np.diag(matrix(np.sqrt(Theta)))
+#     n = len(Q)
 
-    # Make Q work for abs value
-    Q = matrix(np.block([[Q, np.zeros((n,n)), np.zeros((n,n))], [np.zeros((n,n)), np.zeros((n,n)), np.zeros((n,n))], [np.zeros((n,n)), np.zeros((n,n)), np.zeros((n,n))]]))
+#     # Make Q work for abs value
+#     Q = matrix(np.block([[Q, np.zeros((n,n)), np.zeros((n,n))], [np.zeros((n,n)), np.zeros((n,n)), np.zeros((n,n))], [np.zeros((n,n)), np.zeros((n,n)), np.zeros((n,n))]]))
 
-    # A and B
-    b1 = np.ones([1,1])
-    try:
-        b2 = x0
-        b = np.concatenate((b1,b2))
-    except:
-        b2 = matrix(x0)
-        b = np.concatenate((b1,b2))
+#     # A and B
+#     b1 = np.ones([1,1])
+#     try:
+#         b2 = x0
+#         b = np.concatenate((b1,b2))
+#     except:
+#         b2 = matrix(x0)
+#         b = np.concatenate((b1,b2))
 
 
-    A = matrix(np.block([[np.ones(n), c * np.ones(n), -c * np.ones(n)], [np.eye(n), np.eye(n), -np.eye(n)]]))
+#     A = matrix(np.block([[np.ones(n), c * np.ones(n), -c * np.ones(n)], [np.eye(n), np.eye(n), -np.eye(n)]]))
     
 
-    # G and h
-    G = matrix(0.0, (6 * n + 1, 3 * n))
-    h = opt.matrix(0.0, (6 * n + 1, 1))
-    for k in range(3 * n):
-        # xi > 0 constraint
-        G[k, k] = -1
-    # xi > max_weight
-        G[k + 3 * n, k] = 1
-        h[k + 3 * n] = max_weight
-    for k in range(2 * n):
-        # sum dwi+ + dwi- < turnover
-        G[6 * n, k + n] = 1
+#     # G and h
+#     G = matrix(0.0, (6 * n + 1, 3 * n))
+#     h = opt.matrix(0.0, (6 * n + 1, 1))
+#     for k in range(3 * n):
+#         # xi > 0 constraint
+#         G[k, k] = -1
+#     # xi > max_weight
+#         G[k + 3 * n, k] = 1
+#         h[k + 3 * n] = max_weight
+#     for k in range(2 * n):
+#         # sum dwi+ + dwi- < turnover
+#         G[6 * n, k + n] = 1
 
-    h[6 * n] = turnover
+#     h[6 * n] = turnover
 
-    quad = lambd*Q
+#     quad = lambd*Q
 
-    r = matrix(np.block([rpen*np.array(mu) - ep*sqrtTh, -c * np.ones(2*n)]))
+#     r = matrix(np.block([rpen*np.array(mu) - ep*sqrtTh, -c * np.ones(2*n)]))
 
-    return np.transpose(np.array(qp(matrix(quad), -1*matrix(r), matrix(G), matrix(h), matrix(A), matrix(b))['x'])[0:n])[0].tolist()
+#     return np.transpose(np.array(qp(matrix(quad), -1*matrix(r), matrix(G), matrix(h), matrix(A), matrix(b))['x'])[0:n])[0].tolist()
 '''
 Risk Parity Optimizer
 Inputs: mu: numpy array, key: Symbol. value: return estimate
@@ -175,7 +175,7 @@ def RP(mu,Q):
 
     L = np.linalg.cholesky(Q)
     L /= np.linalg.norm(L)
-
+    
     # Objective Function
     risk = cp.norm(L@w,2)
     log_term = 0
@@ -186,10 +186,13 @@ def RP(mu,Q):
     
     # ECOS fails sometimes, if it does then do SCS
     try:
-        prob.solve(verbose=False)
+        prob.solve()
     except:
-        prob.solve(solver='SCS',verbose=False)
+        prob.solve(solver='SCS')
+    x = w.value
 
+    if x is None:
+        prob.solve(solver='SCS')
     x = w.value
     x = np.divide(x, np.sum(x))
 
@@ -837,7 +840,7 @@ class drrpw_custom(torch.autograd.Function):
             h_inv = hessian_invs[batch]
 
             norm = np.linalg.norm(phi)
-            risk = phi.T @ Sigma @ phi
+            risk = abs(phi.T @ Sigma @ phi)
             sigma_phi = Sigma @ phi
 
             b = - 2*norm * (sigma_phi) / math.sqrt(risk) - 2*(math.sqrt(risk) / norm)*phi - 2*delta*phi

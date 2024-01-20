@@ -4,6 +4,7 @@ from datetime import datetime
 import torch
 
 start, end = '2016-01-01', '2022-12-31'
+# start, end = '2016-04-25', '2016-04-30'
 # start, end = '2015-01-01', '2015-01-31'
 factors_list = ['RF', 'SMB', 'HML']
 factors_list = ['RF']

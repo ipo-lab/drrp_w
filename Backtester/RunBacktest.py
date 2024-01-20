@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 import cvxpy as cp
-from util import LoadData, generate_date_list, start, end, factors_list
+from util import LoadData, generate_date_list, start, end, factors_list, nearestPD
 from Optimizers import Optimizers, GetOptimalAllocation, drrpw_net
 from FactorModelling import GetParameterEstimates
 import PortfolioClasses as pc
@@ -16,8 +16,16 @@ from torch.utils.data import DataLoader
 
 def RunBacktest(path_to_data, opt_type, InitialValue=1000000, lookback = 52, datatype='broad', delta_rob=0.05):
     returns, assets_list_cleaned, prices, factors = LoadData(path_to_data, e2e=True, datatype=datatype)
+
+    nan_columns = prices.columns[prices.isna().any()].tolist()
+    prices.drop(nan_columns, axis=1, inplace=True)
+    returns.drop(nan_columns, axis=1, inplace=True)
+
+    assets_list_cleaned = [x for x in assets_list_cleaned if not x in nan_columns]
+    print("{} Assets".format(len(assets_list_cleaned)))
     holdings = pd.DataFrame(columns=['date']+assets_list_cleaned)
     portVal = pd.DataFrame(columns=['date', 'Wealth'])
+
 
     dates = generate_date_list(returns, prices, start=start, end=end)
     first = True
@@ -50,8 +58,12 @@ def RunBacktest(path_to_data, opt_type, InitialValue=1000000, lookback = 52, dat
         factor_returns = factor_returns.drop('date', axis=1)
 
         mu, Q = GetParameterEstimates(asset_returns, factor_returns, log=False, bad=True, shrinkage=(opt_type == Optimizers.RP_Shrinkage))
-        x = GetOptimalAllocation(mu, Q, opt_type, x, delta_robust=delta_rob)
-        print(x)
+        Q = nearestPD(Q)
+
+        try:
+            x = GetOptimalAllocation(mu, Q, opt_type, x, delta_robust=delta_rob)
+        except:
+            pass
 
         # Update Holdings
         holdings.loc[len(holdings)] = [date] + list(x)
